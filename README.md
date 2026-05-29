@@ -1,5 +1,7 @@
 # LM Studio AI Telegram Bot with Image Support
 
+![LM Studio AI Telegram Bot](avatar.jpg)
+
 A Telegram AI bot that connects to a local LM Studio server using an OpenAI-compatible API.
 
 The bot supports text conversations, role switching, chat memory per user session, formatted Telegram replies, and optional image input support for vision-capable models.
