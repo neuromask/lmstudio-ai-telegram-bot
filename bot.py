@@ -106,8 +106,14 @@ ABOUT_TEXT = (
     "• Память внутри текущей сессии\n"
     "• Анализ изображений при использовании vision-модели\n\n"
 
-    "📦 <b>GitHub проекта:</b>\n"
-    '<a href="https://github.com/neuromask/lmstudio-ai-telegram-bot">lmstudio-ai-telegram-bot</a>\n\n'
+    "⌨️ <b>Команды бота:</b>\n"
+    "• /start — запустить бота и создать новую сессию\n"
+    "• /setstyle — выбрать роль ассистента\n"
+    "• /restart — очистить память текущего диалога\n"
+    "• /about — информация о боте\n\n"
+
+    "📦 <b>GitHub:</b> "
+    '<a href="https://github.com/neuromask/lmstudio-ai-telegram-bot">lmstudio-ai-telegram-bot</a>\n'
 
     "👤 <b>Автор:</b> @neuromask\n\n"
 
@@ -209,7 +215,7 @@ ROLE_IDS = {
 user_sessions = {}
 chat_styles = {}
 
-MAX_HISTORY_MESSAGES = 40
+MAX_HISTORY_MESSAGES = 80
 
 
 def trim_history(chat_id: int):
