@@ -4,6 +4,7 @@ import base64
 import asyncio
 import logging
 import time
+from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 
@@ -70,7 +71,6 @@ file_handler.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 if not logger.handlers:
     logger.addHandler(file_handler)
 
-# Немного приглушаем слишком шумные сторонние библиотеки
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)
@@ -90,35 +90,102 @@ ai_client = AsyncOpenAI(
 # BOT TEXT
 # =========================
 
+BANNER_PATH = Path("banner.jpg")
+
+WELCOME_TEXT = (
+    "👋 <b>Добро пожаловать в Nuforms AI!</b>\n\n"
+    "Я — специализированная языковая модель, выполняющая роль личной ИИ-прислуги "
+    "и цифрового секретаря Александра.\n"
+    "Создан для быстрых ответов, анализа текста, помощи с кодом, общения в разных ролях "
+    "и работы с изображениями.\n\n"
+
+    "🚀 <b>Что я умею:</b>\n"
+    "• Отвечать на вопросы и помогать с задачами\n"
+    "• Работать с кодом, текстами и идеями\n"
+    "• Анализировать изображения и скриншоты\n"
+    "• Переключаться между ролями ассистента\n"
+    "• Помнить контекст текущей сессии\n\n"
+
+    "⌨️ <b>Команды:</b>\n"
+    "• /setstyle — выбрать роль ассистента\n"
+    "• /restart — очистить память диалога\n"
+    "• /about — информация о Nuforms AI\n\n"
+
+    "🧠 <i>Личный цифровой помощник активирован. Готов к работе.</i>"
+)
+
 ABOUT_TEXT = (
     "🧠 <b>Nuforms AI — Личный цифровой помощник</b>\n\n"
-    "Приветствую! Я — локальный Telegram AI-бот, подключенный к LM Studio через OpenAI-compatible API.\n"
-    "Создан для быстрых ответов, анализа текста, общения с локальными моделями и работы с изображениями.\n\n"
+    "Приветствую! Я — специализированная языковая модель, выполняющая роль личной ИИ-прислуги "
+    "и цифрового секретаря Александра.\n"
+    "Я создан для быстрых ответов, анализа информации, помощи с задачами, общения в разных ролях "
+    "и работы с изображениями.\n\n"
 
     "💎 <b>Мой цифровой профиль:</b>\n"
     "• <b>Ядро:</b> <code>Gemma-4-e4b</code>\n"
     "• <b>Железо:</b> RTX 5080 + 9850X3D, 64 ГБ ОЗУ\n"
-    "• <b>Сервер:</b> <code>LM Studio Local Server</code>\n\n"
+    "• <b>Формат:</b> локальный персональный AI-ассистент\n\n"
 
     "🚀 <b>Возможности:</b>\n"
-    "• Диалог с локальной AI-моделью\n"
+    "• Диалог с персональной AI-моделью\n"
     "• Переключение ролей ассистента\n"
     "• Память внутри текущей сессии\n"
-    "• Анализ изображений при использовании vision-модели\n\n"
+    "• Анализ изображений и скриншотов\n"
+    "• Помощь с кодом, текстами, идеями и объяснениями\n\n"
 
     "⌨️ <b>Команды бота:</b>\n"
-    "• /start — запустить бота и создать новую сессию\n"
-    "• /setstyle — выбрать роль ассистента\n"
+    "• /start — запустить помощника и создать новую сессию\n"
+    "• /setstyle — выбрать роль и стиль общения\n"
     "• /restart — очистить память текущего диалога\n"
-    "• /about — информация о боте\n\n"
+    "• /about — информация о Nuforms AI\n\n"
 
     "📦 <b>GitHub:</b> "
     '<a href="https://github.com/neuromask/lmstudio-ai-telegram-bot">lmstudio-ai-telegram-bot</a>\n'
 
     "👤 <b>Автор:</b> @neuromask\n\n"
 
-    "<i>Локальный интеллект. Быстрые ответы. Полный контроль.</i>"
+    "<i>Локальный интеллект. Личный контроль. Быстрые ответы.</i>"
 )
+
+SETSTYLE_TEXT = (
+    "🎭 <b>Выбери роль ассистента</b>\n\n"
+    "Роль меняет стиль, тон и поведение Nuforms AI в текущем диалоге.\n"
+    "Можно выбрать обычного AI, врача, юриста, повара, робота, мастера или ученого.\n\n"
+    "💡 <i>Роль можно сменить в любой момент через /setstyle.</i>"
+)
+
+RESTART_TEXT = (
+    "🔄 <b>Сессия сброшена!</b>\n\n"
+    "Память текущего диалога очищена, и можно начать общение с чистого листа.\n"
+    "Выбранная роль ассистента сохранена."
+)
+
+UNKNOWN_ROLE_TEXT = (
+    "⚠️ Неизвестная роль. Попробуй снова через /setstyle."
+)
+
+GENERATION_ERROR_TEXT = (
+    "⚠️ Ошибка при генерации ответа.\n\n"
+    "Проверь, что LM Studio запущен, модель загружена, а Local Server включен."
+)
+
+PHOTO_ERROR_TEXT = (
+    "⚠️ Ошибка при обработке изображения.\n\n"
+    "Проверь, что в LM Studio загружена vision-модель."
+)
+
+EMPTY_MODEL_RESPONSE_TEXT = "Пустой ответ от модели."
+
+BOT_COMMANDS = [
+    BotCommand("start", "🚀 Запустить Nuforms AI"),
+    BotCommand("setstyle", "🎭 Выбрать роль ассистента"),
+    BotCommand("restart", "🔄 Очистить память диалога"),
+    BotCommand("about", "ℹ️ О боте и проекте"),
+]
+
+
+def role_changed_text(role_name: str) -> str:
+    return f"✅ Роль изменена.\n\nТеперь я — <b>{role_name}</b>."
 
 
 # =========================
@@ -330,7 +397,7 @@ async def send_long_message(bot, chat_id: int, text: str, parse_mode: str = "HTM
     max_length = 3500
 
     if not text:
-        text = "Пустой ответ от модели."
+        text = EMPTY_MODEL_RESPONSE_TEXT
 
     chunks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
 
@@ -381,6 +448,25 @@ async def stop_typing_task(task: asyncio.Task):
 
 
 # =========================
+# SEND TEXT WITH BANNER
+# =========================
+
+async def send_text_with_banner(update: Update, text: str):
+    if BANNER_PATH.exists():
+        with BANNER_PATH.open("rb") as banner:
+            await update.message.reply_photo(
+                photo=banner,
+                caption=text,
+                parse_mode="HTML",
+            )
+    else:
+        await update.message.reply_text(
+            text,
+            parse_mode="HTML",
+        )
+
+
+# =========================
 # INLINE KEYBOARD
 # =========================
 
@@ -422,11 +508,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
     ]
 
-    await update.message.reply_text(
-        "👋 Привет! Я готов.\n\n"
-        "Нажми /setstyle, чтобы выбрать роль ассистента.",
-        parse_mode="HTML",
-    )
+    await send_text_with_banner(update, WELCOME_TEXT)
 
 
 async def set_style_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -438,7 +520,7 @@ async def set_style_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = build_roles_keyboard()
 
     await update.message.reply_text(
-        "👇 <b>Выбери роль ассистента:</b>",
+        SETSTYLE_TEXT,
         parse_mode="HTML",
         reply_markup=keyboard,
     )
@@ -484,7 +566,8 @@ async def role_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await query.edit_message_text(
-            "⚠️ Неизвестная роль. Попробуй снова через /setstyle."
+            UNKNOWN_ROLE_TEXT,
+            parse_mode="HTML",
         )
         return
 
@@ -499,7 +582,7 @@ async def role_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await query.edit_message_text(
-        text=f"✅ Роль изменена.\n\nТеперь я — <b>{role_name}</b>.",
+        text=role_changed_text(role_name),
         parse_mode="HTML",
     )
 
@@ -510,11 +593,7 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info("Command /about | chat_id=%s | user_id=%s", chat_id, user_id)
 
-    await update.message.reply_text(
-        ABOUT_TEXT,
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
+    await send_text_with_banner(update, ABOUT_TEXT)
 
 
 async def restart_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -533,7 +612,7 @@ async def restart_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "🔄 Сессия сброшена!",
+        RESTART_TEXT,
         parse_mode="HTML",
     )
 
@@ -607,8 +686,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_sessions[chat_id].pop()
 
         await update.message.reply_text(
-            "⚠️ Ошибка при генерации ответа.\n\n"
-            "Проверь, что LM Studio запущен, модель загружена, а Local Server включен."
+            GENERATION_ERROR_TEXT,
+            parse_mode="HTML",
         )
 
     finally:
@@ -709,8 +788,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_sessions[chat_id].pop()
 
         await update.message.reply_text(
-            "⚠️ Ошибка при обработке изображения.\n\n"
-            "Проверь, что в LM Studio загружена vision-модель."
+            PHOTO_ERROR_TEXT,
+            parse_mode="HTML",
         )
 
     finally:
@@ -722,14 +801,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def post_init(application: Application):
-    commands = [
-        BotCommand("start", "Запустить бота"),
-        BotCommand("setstyle", "Выбрать ассистента"),
-        BotCommand("restart", "Очистить память"),
-        BotCommand("about", "О боте"),
-    ]
-
-    await application.bot.set_my_commands(commands)
+    await application.bot.set_my_commands(BOT_COMMANDS)
 
     logger.info("Bot commands registered")
 
