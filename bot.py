@@ -451,19 +451,22 @@ async def stop_typing_task(task: asyncio.Task):
 # SEND TEXT WITH BANNER
 # =========================
 
-async def send_text_with_banner(update: Update, text: str):
+async def send_text_with_banner(
+    update: Update,
+    text: str,
+    disable_web_page_preview: bool = False,
+):
     if BANNER_PATH.exists():
         with BANNER_PATH.open("rb") as banner:
-            await update.message.reply_photo(
-                photo=banner,
-                caption=text,
-                parse_mode="HTML",
-            )
+            await update.message.reply_photo(photo=banner)
     else:
-        await update.message.reply_text(
-            text,
-            parse_mode="HTML",
-        )
+        logger.warning("Banner file not found | path=%s", BANNER_PATH)
+
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML",
+        disable_web_page_preview=disable_web_page_preview,
+    )
 
 
 # =========================
@@ -593,7 +596,11 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info("Command /about | chat_id=%s | user_id=%s", chat_id, user_id)
 
-    await send_text_with_banner(update, ABOUT_TEXT)
+    await send_text_with_banner(
+        update,
+        ABOUT_TEXT,
+        disable_web_page_preview=True,
+    )
 
 
 async def restart_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
