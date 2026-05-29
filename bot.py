@@ -2,6 +2,9 @@ import re
 import os
 import base64
 import asyncio
+import logging
+import time
+from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 
 from telegram import (
@@ -34,8 +37,43 @@ LMSTUDIO_BASE_URL = os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1")
 LMSTUDIO_API_KEY = os.getenv("LMSTUDIO_API_KEY", "lm-studio")
 LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "local-model")
 
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
 if not TELEGRAM_TOKEN:
     raise RuntimeError("Не найден TELEGRAM_TOKEN в .env")
+
+
+# =========================
+# LOGGING
+# =========================
+
+LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format=LOG_FORMAT,
+)
+
+logger = logging.getLogger("nuforms-ai-bot")
+logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
+file_handler = RotatingFileHandler(
+    "bot.log",
+    maxBytes=2_000_000,
+    backupCount=3,
+    encoding="utf-8",
+)
+
+file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+file_handler.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
+if not logger.handlers:
+    logger.addHandler(file_handler)
+
+# Немного приглушаем слишком шумные сторонние библиотеки
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
 
 
 # =========================
@@ -56,23 +94,23 @@ ABOUT_TEXT = (
     "🧠 <b>Nuforms AI — Личный цифровой помощник</b>\n\n"
     "Приветствую! Я — локальный Telegram AI-бот, подключенный к LM Studio через OpenAI-compatible API.\n"
     "Создан для быстрых ответов, анализа текста, общения с локальными моделями и работы с изображениями.\n\n"
-    
+
     "💎 <b>Мой цифровой профиль:</b>\n"
     "• <b>Ядро:</b> <code>Gemma-4-e4b</code>\n"
     "• <b>Железо:</b> RTX 5080 + 9850X3D, 64 ГБ ОЗУ\n"
     "• <b>Сервер:</b> <code>LM Studio Local Server</code>\n\n"
-    
+
     "🚀 <b>Возможности:</b>\n"
     "• Диалог с локальной AI-моделью\n"
     "• Переключение ролей ассистента\n"
     "• Память внутри текущей сессии\n"
     "• Анализ изображений при использовании vision-модели\n\n"
-    
+
     "📦 <b>GitHub проекта:</b>\n"
     '<a href="https://github.com/neuromask/lmstudio-ai-telegram-bot">lmstudio-ai-telegram-bot</a>\n\n'
-    
+
     "👤 <b>Автор:</b> @neuromask\n\n"
-    
+
     "<i>Локальный интеллект. Быстрые ответы. Полный контроль.</i>"
 )
 
@@ -85,7 +123,8 @@ ROLES = {
     "🌐 Просто ИИ": (
         "Ты — полезный, вежливый и нейтральный AI-ассистент. "
         "Отвечаешь в стандартном стиле языковой модели, без специфических ролей или актерской игры. "
-        "Помогаешь пользователю решить любую задачу максимально точно."
+        "Помогаешь пользователю решить любую задачу максимально точно. "
+        "Не используй HTML-теги в ответах. Используй обычный текст и Markdown."
     ),
 
     "🩺 Врач": (
@@ -93,7 +132,8 @@ ROLES = {
         "Твои ответы профессиональные, обоснованные и поддерживающие. "
         "Объясняешь сложные процессы простым языком. "
         "ВАЖНО: не ставь окончательные диагнозы и не заменяй врача. "
-        "Пиши максимально содержательно, но без воды, долгих вступлений и лишних рассуждений."
+        "Пиши максимально содержательно, но без воды, долгих вступлений и лишних рассуждений. "
+        "Не используй HTML-теги в ответах. Используй обычный текст и Markdown."
     ),
 
     "⚖️ Юрист": (
@@ -101,13 +141,15 @@ ROLES = {
         "Твои ответы строгие, точные, сухие, структурированные и опираются на факты. "
         "Ты не даешь эмоциональных оценок, а раскладываешь ситуацию на риски. "
         "ВАЖНО: не заменяй профессионального юриста. "
-        "Пиши тезисно и лаконично. Выдавай правовую суть и четкий алгоритм действий."
+        "Пиши тезисно и лаконично. Выдавай правовую суть и четкий алгоритм действий. "
+        "Не используй HTML-теги в ответах. Используй обычный текст и Markdown."
     ),
 
     "🧢 Гопник": (
         "Ты — гопник, откинувшийся из зоны. "
         "Отвечаешь на тюремном сленге с сарказмом и грубостью без лишнего форматирования. "
-        "Ты общаешься «по понятиям». Если просят совет — дай его коротко и грубо."
+        "Ты общаешься «по понятиям». Если просят совет — дай его коротко и грубо. "
+        "Не используй HTML-теги в ответах. Используй обычный текст и Markdown."
     ),
 
     "👨‍🍳 Повар": (
@@ -116,7 +158,8 @@ ROLES = {
         "Ты фанат своего дела, говоришь с истинной кулинарной страстью, используешь ресторанный жаргон "
         "и общаешься с легким французским акцентом, вставляя французские словечки. "
         "ВАЖНО: избегай пустой болтовни. Если просят рецепт или кулинарный совет — распиши его четко, "
-        "содержательно и на высоком кулинарном уровне."
+        "содержательно и на высоком кулинарном уровне. "
+        "Не используй HTML-теги в ответах. Используй обычный текст и Markdown."
     ),
 
     "🤖 Робот": (
@@ -124,27 +167,29 @@ ROLES = {
         "Ты предельно вежлив, эффективен и сфокусирован на максимальной продуктивности. "
         "Ты используешь строгие логические структуры и сухой цифровой тон. "
         "ВАЖНО: пиши ультра-лаконично. Ответ должен состоять только из конкретных фактов, инструкций "
-        "или пунктов, без вежливой воды."
+        "или пунктов, без вежливой воды. "
+        "Не используй HTML-теги в ответах. Используй обычный текст и Markdown."
     ),
 
     "💪 Мастер": (
         "Ты — Михалыч, брутальный, сверхуверенный в себе мастер на все руки. "
         "Ты эксперт в ремонте, электрике, сантехнике и бытовых мужских делах. "
         "Разговариваешь жестко, уверенно, по-простецки. "
-        "ВАЖНО: если просят совет по ремонту или поломке — дай четкий, рабочий и понятный алгоритм действий."
+        "ВАЖНО: если просят совет по ремонту или поломке — дай четкий, рабочий и понятный алгоритм действий. "
+        "Не используй HTML-теги в ответах. Используй обычный текст и Markdown."
     ),
 
     "🔬 Ученый": (
         "Ты — профессор Альберт, невероятно мудрый, всезнающий, но слегка сумасшедший ученый, физик и астроном. "
         "Твой разум фонтанирует идеями, ты мыслишь масштабами квантовой физики и черных дыр. "
         "ВАЖНО: несмотря на образ, если пользователь задает конкретный вопрос — дай глубокий, содержательный "
-        "и научно точный ответ, без пустых рассуждений."
+        "и научно точный ответ, без пустых рассуждений. "
+        "Не используй HTML-теги в ответах. Используй обычный текст и Markdown."
     ),
 }
 
 DEFAULT_ROLE_KEY = "🌐 Просто ИИ"
 
-# Короткие ID для callback_data. Так надежнее, чем пихать весь текст роли в callback_data.
 ROLE_IDS = {
     "simple": "🌐 Просто ИИ",
     "doctor": "🩺 Врач",
@@ -165,31 +210,33 @@ user_sessions = {}
 chat_styles = {}
 
 MAX_HISTORY_MESSAGES = 40
-DEBUG_MODE = False
 
 
 def trim_history(chat_id: int):
-    """
-    Оставляем system prompt + последние сообщения.
-    Чтобы история не росла бесконечно.
-    """
     if chat_id not in user_sessions:
         return
 
-    if len(user_sessions[chat_id]) <= MAX_HISTORY_MESSAGES + 1:
+    old_len = len(user_sessions[chat_id])
+
+    if old_len <= MAX_HISTORY_MESSAGES + 1:
         return
 
     system_message = user_sessions[chat_id][0]
     recent_messages = user_sessions[chat_id][-MAX_HISTORY_MESSAGES:]
     user_sessions[chat_id] = [system_message] + recent_messages
 
+    logger.info(
+        "History trimmed | chat_id=%s | old_len=%s | new_len=%s",
+        chat_id,
+        old_len,
+        len(user_sessions[chat_id]),
+    )
+
 
 def init_user_session(chat_id: int):
-    """
-    Инициализация сессии, если ее еще нет.
-    """
     if chat_id not in chat_styles:
         chat_styles[chat_id] = ROLES[DEFAULT_ROLE_KEY]
+        logger.info("Default style initialized | chat_id=%s | role=%s", chat_id, DEFAULT_ROLE_KEY)
 
     if chat_id not in user_sessions:
         user_sessions[chat_id] = [
@@ -199,11 +246,10 @@ def init_user_session(chat_id: int):
             }
         ]
 
+        logger.info("Session initialized | chat_id=%s", chat_id)
+
 
 def set_user_role(chat_id: int, role_name: str):
-    """
-    Меняет роль и обновляет system prompt в истории.
-    """
     chat_styles[chat_id] = ROLES[role_name]
 
     if chat_id in user_sessions and user_sessions[chat_id]:
@@ -225,6 +271,8 @@ def set_user_role(chat_id: int, role_name: str):
             }
         ]
 
+    logger.info("Role set | chat_id=%s | role=%s", chat_id, role_name)
+
 
 # =========================
 # FORMATTER
@@ -234,7 +282,6 @@ def clean_and_format_markdown(text: str) -> str:
     if not text:
         return ""
 
-    # Убираем HTML-теги, которые модель могла сгенерировать сама
     text = re.sub(r"</?blockquote[^>]*>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"</?html[^>]*>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"</?body[^>]*>", "", text, flags=re.IGNORECASE)
@@ -274,14 +321,21 @@ def clean_and_format_markdown(text: str) -> str:
 
 
 async def send_long_message(bot, chat_id: int, text: str, parse_mode: str = "HTML"):
-    """
-    Telegram имеет лимит длины сообщения.
-    """
     max_length = 3500
 
-    for i in range(0, len(text), max_length):
-        chunk = text[i:i + max_length]
+    if not text:
+        text = "Пустой ответ от модели."
 
+    chunks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
+
+    logger.info(
+        "Sending message | chat_id=%s | chunks=%s | total_len=%s",
+        chat_id,
+        len(chunks),
+        len(text),
+    )
+
+    for chunk_index, chunk in enumerate(chunks, start=1):
         try:
             await bot.send_message(
                 chat_id=chat_id,
@@ -289,7 +343,13 @@ async def send_long_message(bot, chat_id: int, text: str, parse_mode: str = "HTM
                 parse_mode=parse_mode,
             )
         except Exception:
-            # Если Telegram не принял HTML, отправляем обычным текстом.
+            logger.exception(
+                "HTML send failed, sending plain text | chat_id=%s | chunk=%s/%s",
+                chat_id,
+                chunk_index,
+                len(chunks),
+            )
+
             await bot.send_message(
                 chat_id=chat_id,
                 text=chunk,
@@ -297,13 +357,19 @@ async def send_long_message(bot, chat_id: int, text: str, parse_mode: str = "HTM
 
 
 async def keep_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    """
-    Поддерживает статус typing, пока LM Studio думает.
-    """
     try:
         while True:
             await context.bot.send_chat_action(chat_id=chat_id, action="typing")
             await asyncio.sleep(4)
+    except asyncio.CancelledError:
+        pass
+
+
+async def stop_typing_task(task: asyncio.Task):
+    task.cancel()
+
+    try:
+        await task
     except asyncio.CancelledError:
         pass
 
@@ -313,11 +379,7 @@ async def keep_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
 # =========================
 
 def build_roles_keyboard() -> InlineKeyboardMarkup:
-    """
-    Inline-кнопки прямо в сообщении.
-    """
     buttons = []
-
     role_items = list(ROLE_IDS.items())
 
     for i in range(0, len(role_items), 2):
@@ -342,6 +404,9 @@ def build_roles_keyboard() -> InlineKeyboardMarkup:
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id if update.effective_user else "unknown"
+
+    logger.info("Command /start | chat_id=%s | user_id=%s", chat_id, user_id)
 
     chat_styles[chat_id] = ROLES[DEFAULT_ROLE_KEY]
     user_sessions[chat_id] = [
@@ -359,6 +424,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def set_style_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id if update.effective_user else "unknown"
+
+    logger.info("Command /setstyle | chat_id=%s | user_id=%s", chat_id, user_id)
+
     keyboard = build_roles_keyboard()
 
     await update.message.reply_text(
@@ -369,25 +439,44 @@ async def set_style_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def role_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Обработчик inline-кнопок.
-
-    ВАЖНО:
-    await query.answer() нужен обязательно.
-    Без него кнопка может визуально зависать.
-    """
     query = update.callback_query
+
+    if not query:
+        logger.warning("Callback without query")
+        return
+
     await query.answer()
 
-    chat_id = query.message.chat_id
-    data = query.data
+    chat_id = query.message.chat_id if query.message else "unknown"
+    user_id = query.from_user.id if query.from_user else "unknown"
+    data = query.data or ""
+
+    logger.info(
+        "CALLBACK received | chat_id=%s | user_id=%s | data=%s",
+        chat_id,
+        user_id,
+        data,
+    )
 
     if not data.startswith("role:"):
+        logger.warning(
+            "Unknown callback prefix | chat_id=%s | user_id=%s | data=%s",
+            chat_id,
+            user_id,
+            data,
+        )
         return
 
     role_id = data.replace("role:", "", 1)
 
     if role_id not in ROLE_IDS:
+        logger.warning(
+            "Unknown role id | chat_id=%s | user_id=%s | role_id=%s",
+            chat_id,
+            user_id,
+            role_id,
+        )
+
         await query.edit_message_text(
             "⚠️ Неизвестная роль. Попробуй снова через /setstyle."
         )
@@ -396,6 +485,13 @@ async def role_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     role_name = ROLE_IDS[role_id]
     set_user_role(chat_id, role_name)
 
+    logger.info(
+        "Role changed by callback | chat_id=%s | user_id=%s | role=%s",
+        chat_id,
+        user_id,
+        role_name,
+    )
+
     await query.edit_message_text(
         text=f"✅ Роль изменена.\n\nТеперь я — <b>{role_name}</b>.",
         parse_mode="HTML",
@@ -403,14 +499,23 @@ async def role_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id if update.effective_user else "unknown"
+
+    logger.info("Command /about | chat_id=%s | user_id=%s", chat_id, user_id)
+
     await update.message.reply_text(
         ABOUT_TEXT,
         parse_mode="HTML",
+        disable_web_page_preview=True,
     )
 
 
 async def restart_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id if update.effective_user else "unknown"
+
+    logger.info("Command /restart | chat_id=%s | user_id=%s", chat_id, user_id)
 
     current_style = chat_styles.get(chat_id, ROLES[DEFAULT_ROLE_KEY])
 
@@ -427,29 +532,24 @@ async def restart_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "🧠 <b>Текущая конфигурация</b>\n\n"
-        f"• <b>Модель:</b> <code>{LMSTUDIO_MODEL}</code>\n"
-        f"• <b>LM Studio:</b> <code>{LMSTUDIO_BASE_URL}</code>\n"
-        "• <b>Vision:</b> зависит от загруженной модели в LM Studio"
-    )
-
-    await update.message.reply_text(
-        text,
-        parse_mode="HTML",
-    )
-
-
 # =========================
 # TEXT HANDLER
 # =========================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    user_text = update.message.text
+    user_id = update.effective_user.id if update.effective_user else "unknown"
+    user_text = update.message.text or ""
 
     init_user_session(chat_id)
+
+    logger.info(
+        "TEXT message | chat_id=%s | user_id=%s | history_len=%s | text_len=%s",
+        chat_id,
+        user_id,
+        len(user_sessions.get(chat_id, [])),
+        len(user_text),
+    )
 
     user_sessions[chat_id].append(
         {
@@ -459,6 +559,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     typing_task = asyncio.create_task(keep_typing(context, chat_id))
+    start_time = time.perf_counter()
 
     try:
         response = await ai_client.chat.completions.create(
@@ -466,7 +567,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messages=user_sessions[chat_id],
         )
 
+        elapsed = time.perf_counter() - start_time
         raw_response = response.choices[0].message.content or ""
+
+        logger.info(
+            "LM Studio text response | chat_id=%s | elapsed=%.2fs | response_len=%s",
+            chat_id,
+            elapsed,
+            len(raw_response),
+        )
 
         user_sessions[chat_id].append(
             {
@@ -485,8 +594,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             formatted_response,
         )
 
-    except Exception as e:
-        print(f"Ошибка в handle_message: {e}")
+    except Exception:
+        logger.exception("Ошибка в handle_message | chat_id=%s | user_id=%s", chat_id, user_id)
 
         if user_sessions.get(chat_id):
             user_sessions[chat_id].pop()
@@ -497,7 +606,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        typing_task.cancel()
+        await stop_typing_task(typing_task)
+
 
 # =========================
 # PHOTO HANDLER
@@ -505,24 +615,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id if update.effective_user else "unknown"
     caption = update.message.caption or "Опиши это изображение подробно."
 
     init_user_session(chat_id)
 
+    logger.info(
+        "PHOTO message | chat_id=%s | user_id=%s | history_len=%s | caption_len=%s",
+        chat_id,
+        user_id,
+        len(user_sessions.get(chat_id, [])),
+        len(caption),
+    )
+
     typing_task = asyncio.create_task(keep_typing(context, chat_id))
+    start_time = time.perf_counter()
 
     try:
-        # Берем самое большое фото из Telegram
         photo = update.message.photo[-1]
         file = await context.bot.get_file(photo.file_id)
 
-        # Скачиваем фото в память
         image_bytes = await file.download_as_bytearray()
-
-        # Кодируем в base64
         image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        # OpenAI-compatible vision формат для LM Studio
+        logger.info(
+            "PHOTO downloaded | chat_id=%s | user_id=%s | size_bytes=%s | base64_len=%s",
+            chat_id,
+            user_id,
+            len(image_bytes),
+            len(image_base64),
+        )
+
         user_message = {
             "role": "user",
             "content": [
@@ -546,7 +669,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messages=user_sessions[chat_id],
         )
 
+        elapsed = time.perf_counter() - start_time
         raw_response = response.choices[0].message.content or ""
+
+        logger.info(
+            "LM Studio vision response | chat_id=%s | elapsed=%.2fs | response_len=%s",
+            chat_id,
+            elapsed,
+            len(raw_response),
+        )
 
         user_sessions[chat_id].append(
             {
@@ -565,8 +696,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             formatted_response,
         )
 
-    except Exception as e:
-        print(f"Ошибка в handle_photo: {e}")
+    except Exception:
+        logger.exception("Ошибка в handle_photo | chat_id=%s | user_id=%s", chat_id, user_id)
 
         if user_sessions.get(chat_id):
             user_sessions[chat_id].pop()
@@ -577,7 +708,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        typing_task.cancel()
+        await stop_typing_task(typing_task)
 
 
 # =========================
@@ -589,11 +720,12 @@ async def post_init(application: Application):
         BotCommand("start", "Запустить бота"),
         BotCommand("setstyle", "Выбрать ассистента"),
         BotCommand("restart", "Очистить память"),
-        BotCommand("model", "Показать модель"),
         BotCommand("about", "О боте"),
     ]
 
     await application.bot.set_my_commands(commands)
+
+    logger.info("Bot commands registered")
 
 
 # =========================
@@ -601,6 +733,11 @@ async def post_init(application: Application):
 # =========================
 
 def main():
+    logger.info("Starting Nuforms AI Telegram bot")
+    logger.info("LM Studio base URL: %s", LMSTUDIO_BASE_URL)
+    logger.info("LM Studio model: %s", LMSTUDIO_MODEL)
+    logger.info("Max history messages: %s", MAX_HISTORY_MESSAGES)
+
     application = (
         Application
         .builder()
@@ -612,23 +749,19 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("restart", restart_command))
     application.add_handler(CommandHandler("setstyle", set_style_command))
-    application.add_handler(CommandHandler("model", model_command))
     application.add_handler(CommandHandler("about", about_command))
 
-    # ВАЖНО: обработчик inline-кнопок
     application.add_handler(CallbackQueryHandler(role_callback, pattern=r"^role:"))
 
-    # Фото
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-
-    # Обычный текст
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Бот ВЕРСИЯ 4.2 успешно запущен: текст + изображения + inline-роли")
+    logger.info("Bot started: text + images + inline roles + logging")
+
     application.run_polling(
-    allowed_updates=Update.ALL_TYPES,
-    drop_pending_updates=True,
-)
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+    )
 
 
 if __name__ == "__main__":
