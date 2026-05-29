@@ -1,4 +1,4 @@
-# lmstudio-ai-telegram-bot
+# LM Studio AI Telegram Bot with Image Support
 
 A Telegram AI bot that connects to a local LM Studio server using an OpenAI-compatible API.
 
@@ -29,8 +29,6 @@ The bot includes several predefined assistant styles:
 * 🤖 Robot
 * 💪 Master
 * 🔬 Scientist
-
-The default role is `Robot`.
 
 ## 📦 Requirements
 
