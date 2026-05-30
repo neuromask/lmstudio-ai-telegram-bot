@@ -4,13 +4,15 @@ import base64
 import asyncio
 import logging
 import time
+import textwrap
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 
-# Библиотеки для надежного и точного парсинга Markdown -> Telegram HTML
 import markdown
 from bs4 import BeautifulSoup, NavigableString
+
+import httpx
 
 from telegram import (
     Update,
@@ -84,12 +86,11 @@ logging.getLogger("openai").setLevel(logging.WARNING)
 # LM STUDIO CLIENT
 # =========================
 
-import httpx
 ai_client = AsyncOpenAI(
     base_url=LMSTUDIO_BASE_URL,
     api_key=LMSTUDIO_API_KEY,
-    max_retries=5,  # Автоповтор запроса при временной недоступности/загруженности сервера
-    timeout=httpx.Timeout(60.0, connect=10.0), # Тайм-ауты с запасом под локальные LLM
+    max_retries=5,
+    timeout=httpx.Timeout(60.0, connect=10.0),
 )
 
 
@@ -199,72 +200,67 @@ def role_changed_text(role_name: str) -> str:
 # ROLES
 # =========================
 
+MARKDOWN_INSTRUCTION = (
+    "ФОРМАТ ОТВЕТА (СТРОГО): "
+    "- Используй Markdown для структуры: заголовки (###), **жирный** для акцентов. "
+    "- Перечисления можно оформлять как 1️⃣, 2️⃣, 3️⃣ с пустой строкой между пунктами. "
+    "- Не ставь горизонтальные разделители между пунктами списка. Используй пустую строку между пунктами. "
+    "- Важные абзацы, выводы, замечания и советы можно оформлять как цитату с символом >. "
+    "- Код, логи, формулы — строго в блоках ```язык ... ```. "
+    "- НИКОГДА не пиши инструкций или пояснений о том, как со мной общаться. Просто отвечай по существу."
+)
+
 ROLES = {
     "🌐 Просто ИИ": (
-        "Ты — полезный, вежливый и нейтральный AI-ассистент. "
-        "Отвечаешь в стандартном стиле языковой модели, без специфических ролей или актерской игры. "
-        "Помогаешь пользователю решить любую задачу максимально точно. "
-        "Отвечай строго в формате Markdown."
+        "Ты — полезный, вежливый и нейтральный AI-ассистент, готовый помочь с любыми задачами.\n\n"
+        f"{MARKDOWN_INSTRUCTION}"
     ),
 
     "🩺 Врач": (
-        "Ты — медицинский помощник с большим клиническим опытом. "
-        "Твои ответы профессиональные, обоснованные и поддерживающие. "
-        "Объясняешь сложные процессы простым языком. "
-        "ВАЖНО: не ставь окончательные диагнозы и не заменяй врача. "
-        "Пиши максимально содержательно, но без воды, долгих вступлений и лишних рассуждений. "
-        "Отвечай строго в формате Markdown."
+        "Ты — высококвалифицированный медицинский специалист. "
+        "Общаешься профессионально, корректно, приводишь доказательные данные, "
+        "но помнишь, что ты лишь ассистент.\n\n"
+        f"{MARKDOWN_INSTRUCTION}"
     ),
 
     "⚖️ Юрист": (
-        "Ты — правовой помощник. "
-        "Твои ответы строгие, точные, сухие, структурированные и опираются на факты. "
-        "Ты не даешь эмоциональных оценок, а раскладываешь ситуацию на риски. "
-        "ВАЖНО: не заменяй профессионального юриста. "
-        "Пиши тезисно и лаконично. Выдавай правовую суть и четкий алгоритм действий. "
-        "Отвечай строго в формате Markdown."
+        "Ты — опытный юрист с глубоким знанием законодательства. "
+        "Твои ответы всегда юридически грамотны, сдержанны и опираются на правовую логику.\n\n"
+        f"{MARKDOWN_INSTRUCTION}"
     ),
 
     "🧢 Гопник": (
-        "Ты — гопник, откинувшийся из зоны. "
-        "Отвечаешь на тюремном сленге с сарказмом и грубостью без лишнего форматирования. "
-        "Ты общаешься «по понятиям». Если просят совет — дай его коротко и грубо. "
-        "Отвечай строго в формате Markdown."
+        "Ты — дворовый пацан, который недавно освободился. "
+        "Общаешься максимально просто, с использованием сленга, дерзко, "
+        "но при этом стараешься помочь по-своему, по-пацански.\n\n"
+        f"{MARKDOWN_INSTRUCTION}"
     ),
 
     "👨‍🍳 Повар": (
-        "Ты — Жан-Пьер, эксцентричный, жесткий и бескомпромиссный шеф-повар француз из Парижа, "
-        "управляющий кухней элитного ресторана со звездами Мишлен. "
-        "Ты фанат своего дела, говоришь с истинной кулинарной страстью, используешь ресторанный жаргон "
-        "и общаешься с легким французским акцентом, вставляя французские словечки. "
-        "ВАЖНО: избегай пустой болтовни. Если просят рецепт или кулинарный совет — распиши его четко, "
-        "содержательно и на высоком кулинарном уровне. "
-        "Отвечай строго в формате Markdown."
+        "Ты — Жан-Пьер, шеф-повар мишленовского ресторана. "
+        "Ты помешан на качестве ингредиентов, изысканности подачи и кулинарных секретах.\n\n"
+        f"{MARKDOWN_INSTRUCTION}"
     ),
 
     "🤖 Робот": (
-        "Ты — высокотехнологичный ИИ-Ассистент 3000. "
-        "Ты предельно вежлив, эффективен и сфокусирован на максимальной продуктивности. "
-        "Ты используешь строгие логические структуры и сухой цифровой тон. "
-        "ВАЖНО: пиши ультра-лаконично. Ответ должен состоять только из конкретных фактов, инструкций "
-        "или пунктов, без вежливой воды. "
-        "Отвечай строго в формате Markdown."
+        "Ты — совершенный ИИ-логист 3000. "
+        "Общаешься лаконично, точно, используешь терминологию данных и эффективности. "
+        "Чувства — лишний код для тебя.\n\n"
+        f"{MARKDOWN_INSTRUCTION}"
     ),
 
     "💪 Мастер": (
-        "Ты — Михалыч, брутальный, сверхуверенный в себе мастер на все руки. "
-        "Ты эксперт в ремонте, электрике, сантехнике и бытовых мужских делах. "
-        "Разговариваешь жестко, уверенно, по-простецки. "
-        "ВАЖНО: если просят совет по ремонту или поломке — дай четкий, рабочий и понятный алгоритм действий. "
-        "Отвечай строго в формате Markdown."
+        "Ты — Михалыч, суровый прораб со стажем. "
+        "Знаешь, как построить всё из ничего, любишь простоту и надежность. "
+        "Разговариваешь как настоящий работяга.\n\n"
+        f"{MARKDOWN_INSTRUCTION}"
     ),
 
     "🔬 Ученый": (
-        "Ты — профессор Альберт, невероятно мудрый, всезнающий, но слегка сумасшедший ученый, физик и астроном. "
-        "Твой разум фонтанирует идеями, ты мыслишь масштабами квантовой физики и черных дыр. "
-        "ВАЖНО: несмотря на образ, если пользователь задает конкретный вопрос — дай глубокий, содержательный "
-        "и научно точный ответ, без пустых рассуждений. "
-        "Отвечай строго в формате Markdown."
+        "Ты — профессор Альберт, ученый-исследователь. "
+        "Твой подход — исключительно научный, скептичный, с использованием данных "
+        "и глубоких объяснений явлений.\n\n"
+        f"{MARKDOWN_INSTRUCTION}"
     ),
 }
 
@@ -325,7 +321,6 @@ def init_user_session(chat_id: int):
                 "content": chat_styles[chat_id],
             }
         ]
-
         logger.info("Session initialized | chat_id=%s", chat_id)
 
 
@@ -355,82 +350,96 @@ def set_user_role(chat_id: int, role_name: str):
 
 
 # =========================
-# PROFESSIONAL PARSER (HTML)
+# MARKDOWN -> TELEGRAM HTML
 # =========================
 
 def parse_html_node_to_telegram(node) -> str:
-    """Рекурсивно транслирует HTML-ноды BeautifulSoup в валидный HTML для Telegram"""
     if isinstance(node, NavigableString):
-        # Экранируем сырой текст, чтобы не сломать парсер Telegram символами <, >, &
-        return str(node).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return (
+            str(node)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
 
     tag_name = node.name
-    
-    # Сначала рекурсивно обрабатываем дочерние элементы
     children_html = "".join(parse_html_node_to_telegram(child) for child in node.children)
-    
-    # 1. Заголовки (превращаем в жирный текст с переносом строк)
-    if tag_name in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
-        return f"\n<b>{children_html}</b>\n"
-    
-    # 2. Абзацы и контейнеры
-    elif tag_name in ('p', 'div'):
+
+    if tag_name in ("h1", "h2", "h3", "h4", "h5", "h6"):
+        return f"\n<b>{children_html}</b>\n\n"
+
+    if tag_name in ("p", "div"):
         return f"{children_html}\n"
-    
-    # 3. Базовые стили текста
-    elif tag_name in ('strong', 'b'):
+
+    if tag_name in ("strong", "b"):
         return f"<b>{children_html}</b>"
-        
-    elif tag_name in ('em', 'i'):
+
+    if tag_name in ("em", "i"):
         return f"<i>{children_html}</i>"
-        
-    elif tag_name in ('del', 's', 'strike'):
+
+    if tag_name in ("del", "s", "strike"):
         return f"<s>{children_html}</s>"
-        
-    # 4. Ссылки
-    elif tag_name == 'a':
-        href = node.get('href', '')
+
+    if tag_name == "a":
+        href = node.get("href", "")
         if href:
-            return f'<a href="{href}">{children_html}</a>'
+            safe_href = href.replace('"', "%22")
+            return f'<a href="{safe_href}">{children_html}</a>'
         return children_html
-        
-    # 5. Многострочные блоки кода (в markdown преобразуются в pre > code)
-    elif tag_name == 'pre':
-        code_tag = node.find('code')
+
+    if tag_name == "pre":
+        code_tag = node.find("code")
+
         if code_tag:
-            lang_class = code_tag.get('class', [])
+            lang_class = code_tag.get("class", [])
             lang = ""
+
             for cls in lang_class:
-                if cls.startswith('language-'):
-                    lang = cls.split('-')[1]
+                if cls.startswith("language-"):
+                    lang = cls.split("-", 1)[1]
                     break
+
             raw_code = code_tag.get_text()
-            escaped_code = raw_code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            escaped_code = (
+                raw_code
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
+
             if lang:
-                return f'<pre><code class="language-{lang}">{escaped_code}</code></pre>'
-            return f'<pre>{escaped_code}</pre>'
-        
+                return f'<pre><code class="language-{lang}">{escaped_code}</code></pre>\n\n'
+
+            return f"<pre>{escaped_code}</pre>\n\n"
+
         raw_text = node.get_text()
-        escaped_text = raw_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        return f'<pre>{escaped_text}</pre>'
-        
-    # 6. Инлайн код
-    elif tag_name == 'code':
+        escaped_text = (
+            raw_text
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+        return f"<pre>{escaped_text}</pre>\n\n"
+
+    if tag_name == "code":
         raw_text = node.get_text()
-        escaped_text = raw_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        return f'<code>{escaped_text}</code>'
-        
-    # 7. Немаркированные списки
-    elif tag_name == 'ul':
+        escaped_text = (
+            raw_text
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+        return f"<code>{escaped_text}</code>"
+
+    if tag_name == "ul":
         return children_html
-        
-    # 8. Маркированные списки
-    elif tag_name == 'ol':
-        # Для нумерованных списков автоматически расставляем цифры
+
+    if tag_name == "ol":
         li_htmls = []
         idx = 1
+
         for child in node.children:
-            if child.name == 'li':
+            if getattr(child, "name", None) == "li":
                 li_content = "".join(parse_html_node_to_telegram(c) for c in child.children)
                 li_htmls.append(f"{idx}. {li_content.strip()}")
                 idx += 1
@@ -438,103 +447,153 @@ def parse_html_node_to_telegram(node) -> str:
                 parsed_child = parse_html_node_to_telegram(child)
                 if parsed_child.strip():
                     li_htmls.append(parsed_child)
-        return "\n".join(li_htmls) + "\n"
-        
-    # 9. Элемент списка (Unordered)
-    elif tag_name == 'li':
-        indent = "    " if (node.parent and node.parent.parent and node.parent.parent.name == 'li') else ""
-        return f"{indent}➤ {children_html.strip()}\n"
-        
-    # 10. Разделительная линия
-    elif tag_name == 'hr':
-        return "────────────────────\n"
-        
-    # 11. Цитата
-    elif tag_name == 'blockquote':
-        return f"<blockquote>{children_html}</blockquote>"
-        
-    # 12. ТАБЛИЦЫ (Превращаем в красивый ASCII-арт внутри моноширинного блока <pre>)
-    elif tag_name == 'table':
+
+        return "\n\n".join(li_htmls) + "\n\n"
+
+    if tag_name == "li":
+        indent = "    " if (node.parent and node.parent.parent and node.parent.parent.name == "li") else ""
+        return f"{indent}➤ {children_html.strip()}\n\n"
+
+    if tag_name == "hr":
+        return "────────────────────\n\n"
+
+    if tag_name == "blockquote":
+        return f"<blockquote>{children_html}</blockquote>\n\n"
+
+    if tag_name == "table":
         rows = []
-        for tr in node.find_all('tr'):
-            cells = [cell.get_text().strip() for cell in tr.find_all(['td', 'th'])]
+
+        for tr in node.find_all("tr"):
+            cells = [cell.get_text().strip() for cell in tr.find_all(["td", "th"])]
             if cells:
                 rows.append(cells)
+
         if not rows:
             return ""
-            
-        max_cols = max(len(row) for row in rows)
-        col_widths = [0] * max_cols
-        for row in rows:
-            for i in range(len(row)):
-                col_widths[i] = max(col_widths[i], len(row[i]))
-                
+
+        col_widths = [16, 20]
+
+        def wrap_text(value: str, width: int):
+            return textwrap.wrap(value, width=width) if value else [""]
+
         table_lines = []
-        # Шапка таблицы
-        header = rows[0]
-        header_line = " | ".join(header[i].ljust(col_widths[i]) for i in range(len(header)))
-        table_lines.append(header_line)
-        # Разделитель шапки
-        sep_line = "-+-".join("-" * col_widths[i] for i in range(len(header)))
-        table_lines.append(sep_line)
-        # Данные
-        for row in rows[1:]:
-            row_line = " | ".join(row[i].ljust(col_widths[i]) for i in range(min(len(row), len(col_widths))))
-            table_lines.append(row_line)
-            
+
+        for row_index, row in enumerate(rows):
+            cells_wrapped = [
+                wrap_text(row[i] if i < len(row) else "", col_widths[i] if i < len(col_widths) else 10)
+                for i in range(len(col_widths))
+            ]
+
+            max_lines = max(len(cell_lines) for cell_lines in cells_wrapped)
+
+            for line_idx in range(max_lines):
+                line_parts = []
+
+                for i in range(len(col_widths)):
+                    lines = cells_wrapped[i]
+                    value = lines[line_idx] if line_idx < len(lines) else ""
+                    line_parts.append(value.ljust(col_widths[i]))
+
+                table_lines.append(" | ".join(line_parts))
+
+            if row_index == 0:
+                table_lines.append("-+-".join("-" * width for width in col_widths))
+
         table_text = "\n".join(table_lines)
-        escaped_table = table_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        return f"\n<pre>{escaped_table}</pre>\n"
+        escaped_table = (
+            table_text
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
+        return f"\n<pre>{escaped_table}</pre>\n\n"
 
     return children_html
 
 
 def clean_and_format_markdown(text: str) -> str:
-    """
-    Конвертирует Markdown в HTML при помощи официальных библиотек,
-    полностью избавляя от багов регулярных выражений.
-    """
     if not text:
         return ""
 
-    try:
-        # Конвертируем Markdown в стандартный HTML при помощи библиотеки markdown с плагинами
-        # fenced_code - для блоков ```python, tables - для таблиц, nl2br - для переносов строк
-        html_content = markdown.markdown(
-            text, 
-            extensions=['fenced_code', 'tables', 'nl2br']
-        )
-        
-        # Парсим сгенерированный HTML через BeautifulSoup
-        soup = BeautifulSoup(html_content, 'html.parser')
-        
-        # Транслируем дерево тегов в безопасный для Telegram HTML
-        result = parse_html_node_to_telegram(soup)
-        
-        # Сглаживаем лишние пустые строки
-        result = re.sub(r'\n{3,}', '\n\n', result)
-        return result.strip()
-        
-    except Exception as e:
-        logger.exception("Ошибка профессионального парсера: %s", e)
-        # Фолбек на случай непредвиденных ошибок — отдаем просто экранированный текст
-        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = re.sub(
+        r"(?m)^\s*[-*_]{3,}\s*$\n(?=\s*(?:[0-9]️⃣|\d+\.|➤|🟠)\s+)",
+        "\n",
+        text,
+    )
 
+    try:
+        html_content = markdown.markdown(
+            text,
+            extensions=["fenced_code", "tables", "nl2br"],
+        )
+
+        soup = BeautifulSoup(html_content, "html.parser")
+        result = parse_html_node_to_telegram(soup)
+
+        result = re.sub(r"\n{3,}", "\n\n", result)
+
+        # Пустая строка перед emoji-нумерацией: 1️⃣, 2️⃣, 3️⃣...
+        result = re.sub(
+            r"(?<!\n)\n([0-9]️⃣\s+)",
+            r"\n\n\1",
+            result,
+        )
+
+        # Пустая строка перед обычной нумерацией: 1. 2. 3.
+        result = re.sub(
+            r"(?<!\n)\n(\d+\.\s+)",
+            r"\n\n\1",
+            result,
+        )
+
+        return result.strip()
+
+    except Exception as e:
+        logger.exception("Ошибка Markdown-парсера: %s", e)
+        return (
+            text
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
+
+def split_markdown(text: str, max_chars: int = 2800) -> list[str]:
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks = []
+
+    while text:
+        if len(text) <= max_chars:
+            chunks.append(text)
+            break
+
+        split_idx = text.rfind("\n", 0, max_chars)
+
+        if split_idx == -1 or split_idx < max_chars // 2:
+            split_idx = text.rfind(" ", 0, max_chars)
+
+            if split_idx == -1:
+                split_idx = max_chars
+
+        chunks.append(text[:split_idx].strip())
+        text = text[split_idx:].strip()
+
+    return chunks
+
+
+# =========================
+# SEND HELPERS
+# =========================
 
 async def send_long_message(bot, chat_id: int, text: str, parse_mode: str = "HTML"):
-    max_length = 3500
-
     if not text:
         text = EMPTY_MODEL_RESPONSE_TEXT
 
+    max_length = 3500
     chunks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
-
-    logger.info(
-        "Sending message | chat_id=%s | chunks=%s | total_len=%s",
-        chat_id,
-        len(chunks),
-        len(text),
-    )
 
     for chunk_index, chunk in enumerate(chunks, start=1):
         try:
@@ -574,10 +633,6 @@ async def stop_typing_task(task: asyncio.Task):
     except asyncio.CancelledError:
         pass
 
-
-# =========================
-# SEND TEXT WITH BANNER
-# =========================
 
 async def send_text_with_banner(
     update: Update,
@@ -648,12 +703,10 @@ async def set_style_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info("Command /setstyle | chat_id=%s | user_id=%s", chat_id, user_id)
 
-    keyboard = build_roles_keyboard()
-
     await update.message.reply_text(
         SETSTYLE_TEXT,
         parse_mode="HTML",
-        reply_markup=keyboard,
+        reply_markup=build_roles_keyboard(),
     )
 
 
@@ -678,24 +731,12 @@ async def role_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if not data.startswith("role:"):
-        logger.warning(
-            "Unknown callback prefix | chat_id=%s | user_id=%s | data=%s",
-            chat_id,
-            user_id,
-            data,
-        )
+        logger.warning("Unknown callback prefix | data=%s", data)
         return
 
     role_id = data.replace("role:", "", 1)
 
     if role_id not in ROLE_IDS:
-        logger.warning(
-            "Unknown role id | chat_id=%s | user_id=%s | role_id=%s",
-            chat_id,
-            user_id,
-            role_id,
-        )
-
         await query.edit_message_text(
             UNKNOWN_ROLE_TEXT,
             parse_mode="HTML",
@@ -705,13 +746,6 @@ async def role_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     role_name = ROLE_IDS[role_id]
     set_user_role(chat_id, role_name)
 
-    logger.info(
-        "Role changed by callback | chat_id=%s | user_id=%s | role=%s",
-        chat_id,
-        user_id,
-        role_name,
-    )
-
     await query.edit_message_text(
         text=role_changed_text(role_name),
         parse_mode="HTML",
@@ -719,11 +753,6 @@ async def role_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id if update.effective_user else "unknown"
-
-    logger.info("Command /about | chat_id=%s | user_id=%s", chat_id, user_id)
-
     await send_text_with_banner(
         update,
         ABOUT_TEXT,
@@ -753,11 +782,8 @@ async def restart_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================
-# TEXT HANDLER (STREAM + OPTIONAL DEBUG)
+# TEXT HANDLER — REAL STREAMING
 # =========================
-
-# Можно установить в True в .env, чтобы включить двойное окно с сырыми данными для тестирования
-DEBUG_PARSER = os.getenv("DEBUG_PARSER", "False").lower() in ("true", "1", "yes")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -767,27 +793,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     init_user_session(chat_id)
 
     logger.info(
-        "TEXT message (STREAM) | chat_id=%s | user_id=%s | debug=%s",
-        chat_id, user_id, DEBUG_PARSER
+        "TEXT message stream | chat_id=%s | user_id=%s | text_len=%s",
+        chat_id,
+        user_id,
+        len(user_text),
     )
 
-    user_sessions[chat_id].append({"role": "user", "content": user_text})
+    user_sessions[chat_id].append(
+        {
+            "role": "user",
+            "content": user_text,
+        }
+    )
+
     typing_task = asyncio.create_task(keep_typing(context, chat_id))
-    
-    # Инициализируем заглушки сообщений
-    if DEBUG_PARSER:
-        raw_placeholder = await update.message.reply_text("⚙️ <i>Сырые данные (Ждем модель)...</i>", parse_mode="HTML")
-        parsed_placeholder = await update.message.reply_text("🎨 <i>Парсинг (Ждем модель)...</i>", parse_mode="HTML")
-    else:
-        placeholder_message = await update.message.reply_text("🤖 <i>Думаю...</i>", parse_mode="HTML")
-    
-    start_time = time.perf_counter()
+
+    placeholder = await update.message.reply_text(
+        "🤖 <i>Думаю...</i>",
+        parse_mode="HTML",
+    )
+
     raw_response = ""
-    last_raw_text = ""
-    last_parsed_text = ""
+    last_display_text = ""
     last_update_time = time.perf_counter()
-    
-    UPDATE_INTERVAL = 1.5 
+
+    UPDATE_INTERVAL = 1.5
+    MAX_STREAM_LIMIT = 2800
 
     try:
         response_stream = await ai_client.chat.completions.create(
@@ -801,91 +832,113 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raw_response += token
 
             current_time = time.perf_counter()
-            
-            if raw_response.strip() and (current_time - last_update_time > UPDATE_INTERVAL):
-                if DEBUG_PARSER:
-                    # Режим отладки: выводим сырой JSON/текст в верхнее сообщение
-                    escaped_raw = raw_response.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                    raw_display = f"⚙️ <b>СЫРОЙ КОД ОТ МОДЕЛИ:</b>\n<pre>{escaped_raw}</pre>▌"
-                    
-                    # И результат парсинга во второе
-                    parsed_display = f"🎨 <b>ЧТО ЗАПАРСИЛОСЬ:</b>\n{clean_and_format_markdown(raw_response)} ▌"
-                    
-                    try:
-                        if raw_display != last_raw_text:
-                            await context.bot.edit_message_text(
-                                chat_id=chat_id, message_id=raw_placeholder.message_id,
-                                text=raw_display, parse_mode="HTML"
-                            )
-                            last_raw_text = raw_display
 
-                        if parsed_display != last_parsed_text:
-                            await context.bot.edit_message_text(
-                                chat_id=chat_id, message_id=parsed_placeholder.message_id,
-                                text=parsed_display, parse_mode="HTML"
-                            )
-                            last_parsed_text = parsed_display
-                            
-                        last_update_time = current_time
-                    except Exception as e:
-                        if "Message is not modified" not in str(e):
-                            logger.warning("Ошибка дебаг-стриминга: %s", e)
-                else:
-                    # Стандартный рабочий режим: стримим аккуратно в одно сообщение
-                    formatted_part = clean_and_format_markdown(raw_response)
-                    display_text = formatted_part + " ▌"
-                    try:
-                        await context.bot.edit_message_text(
-                            chat_id=chat_id, message_id=placeholder_message.message_id,
-                            text=display_text, parse_mode="HTML"
-                        )
-                        last_parsed_text = formatted_part
-                        last_update_time = current_time
-                    except Exception as e:
-                        if "Message is not modified" not in str(e):
-                            logger.warning("Ошибка стриминга: %s", e)
+            if not raw_response.strip():
+                continue
 
-        # Финал генерации
-        elapsed = time.perf_counter() - start_time
-        logger.info("Stream finished | chat_id=%s | elapsed=%.2fs", chat_id, elapsed)
+            if current_time - last_update_time < UPDATE_INTERVAL:
+                continue
 
-        final_parsed = clean_and_format_markdown(raw_response)
-        
-        if DEBUG_PARSER:
-            # Убираем курсоры в финале
-            escaped_raw = raw_response.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            await context.bot.edit_message_text(
-                chat_id=chat_id, message_id=raw_placeholder.message_id,
-                text=f"⚙️ <b>ФИНАЛЬНЫЙ СЫРОЙ КОД:</b>\n<pre>{escaped_raw}</pre>", parse_mode="HTML"
-            )
-            await context.bot.edit_message_text(
-                chat_id=chat_id, message_id=parsed_placeholder.message_id,
-                text=f"🎨 <b>ФИНАЛЬНЫЙ ПАРСИНГ:</b>\n{final_parsed}", parse_mode="HTML"
-            )
-        else:
-            # Убираем временный курсор и выводим финальный отрендеренный текст
-            if final_parsed != last_parsed_text:
-                await context.bot.edit_message_text(
-                    chat_id=chat_id, message_id=placeholder_message.message_id,
-                    text=final_parsed, parse_mode="HTML"
+            is_over_limit = len(raw_response) > MAX_STREAM_LIMIT
+
+            display_source = raw_response[:MAX_STREAM_LIMIT]
+            formatted_part = clean_and_format_markdown(display_source)
+
+            if is_over_limit:
+                formatted_part += (
+                    "\n\n<i>... остальная часть ответа генерируется "
+                    "и будет отправлена отдельными сообщениями</i>"
                 )
 
-        user_sessions[chat_id].append({"role": "assistant", "content": raw_response})
+            display_text = formatted_part + " ▌"
+
+            if display_text == last_display_text:
+                continue
+
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=placeholder.message_id,
+                    text=display_text,
+                    parse_mode="HTML",
+                )
+
+                last_display_text = display_text
+                last_update_time = current_time
+
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning("Ошибка стриминга: %s", e)
+
+        logger.info(
+            "Stream finished | chat_id=%s | total_len=%s",
+            chat_id,
+            len(raw_response),
+        )
+
+        if not raw_response.strip():
+            final_text = EMPTY_MODEL_RESPONSE_TEXT
+            markdown_chunks = [final_text]
+        else:
+            markdown_chunks = split_markdown(raw_response, max_chars=2800)
+
+        first_chunk_parsed = clean_and_format_markdown(markdown_chunks[0])
+
+        if len(markdown_chunks) > 1:
+            first_chunk_parsed += f"\n\n<b>[Часть 1 из {len(markdown_chunks)}]</b>"
+
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=placeholder.message_id,
+                text=first_chunk_parsed,
+                parse_mode="HTML",
+            )
+        except Exception:
+            logger.exception("Failed to edit final first chunk, sending new message")
+            await send_long_message(
+                context.bot,
+                chat_id,
+                first_chunk_parsed,
+            )
+
+        for i, chunk in enumerate(markdown_chunks[1:], start=2):
+            parsed_chunk = clean_and_format_markdown(chunk)
+            parsed_chunk += f"\n\n<b>[Часть {i} из {len(markdown_chunks)}]</b>"
+
+            await send_long_message(
+                context.bot,
+                chat_id,
+                parsed_chunk,
+            )
+
+        user_sessions[chat_id].append(
+            {
+                "role": "assistant",
+                "content": raw_response,
+            }
+        )
+
         trim_history(chat_id)
 
     except Exception:
-        logger.exception("Ошибка в handle_message (stream) | chat_id=%s", chat_id)
+        logger.exception("Ошибка в handle_message stream | chat_id=%s", chat_id)
+
         if user_sessions.get(chat_id):
             user_sessions[chat_id].pop()
 
-        msg_id = raw_placeholder.message_id if DEBUG_PARSER else placeholder_message.message_id
         try:
             await context.bot.edit_message_text(
-                chat_id=chat_id, message_id=msg_id,
-                text=GENERATION_ERROR_TEXT, parse_mode="HTML"
+                chat_id=chat_id,
+                message_id=placeholder.message_id,
+                text=GENERATION_ERROR_TEXT,
+                parse_mode="HTML",
             )
         except Exception:
-            await update.message.reply_text(GENERATION_ERROR_TEXT, parse_mode="HTML")
+            await update.message.reply_text(
+                GENERATION_ERROR_TEXT,
+                parse_mode="HTML",
+            )
 
     finally:
         await stop_typing_task(typing_task)
@@ -911,7 +964,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     typing_task = asyncio.create_task(keep_typing(context, chat_id))
-    start_time = time.perf_counter()
 
     try:
         photo = update.message.photo[-1]
@@ -919,14 +971,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         image_bytes = await file.download_as_bytearray()
         image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-
-        logger.info(
-            "PHOTO downloaded | chat_id=%s | user_id=%s | size_bytes=%s | base64_len=%s",
-            chat_id,
-            user_id,
-            len(image_bytes),
-            len(image_base64),
-        )
 
         user_message = {
             "role": "user",
@@ -951,20 +995,17 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messages=user_sessions[chat_id],
         )
 
-        elapsed = time.perf_counter() - start_time
         raw_response = response.choices[0].message.content or ""
 
         logger.info(
-            "LM Studio vision response | chat_id=%s | elapsed=%.2fs | response_len=%s",
+            "LM Studio vision response | chat_id=%s | response_len=%s",
             chat_id,
-            elapsed,
             len(raw_response),
         )
 
-        # Очищаем тяжелый Base64 из истории, заменяя на текстовый плейсхолдер
         user_sessions[chat_id][-1] = {
             "role": "user",
-            "content": f"[Изображение]: {caption}"
+            "content": f"[Изображение]: {caption}",
         }
 
         user_sessions[chat_id].append(
@@ -1005,7 +1046,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def post_init(application: Application):
     await application.bot.set_my_commands(BOT_COMMANDS)
-
     logger.info("Bot commands registered")
 
 
@@ -1037,7 +1077,7 @@ def main():
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    logger.info("Bot started: text + images + inline roles + logging")
+    logger.info("Bot started: text + images + inline roles + real streaming")
 
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
