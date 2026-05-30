@@ -2,21 +2,26 @@
 
 ![LM Studio AI Telegram Bot](avatar.jpg)
 
-A Telegram AI bot that connects to a local LM Studio server using an OpenAI-compatible API.
+A local Telegram AI assistant powered by LM Studio and an OpenAI-compatible API.
 
-The bot supports text conversations, role switching, chat memory per user session, formatted Telegram replies, and optional image input support for vision-capable models.
+The bot supports streaming text responses, image analysis with vision-capable models, role switching, per-chat session memory, Markdown-to-Telegram-HTML formatting, inline role buttons, welcome/about banners, logging, and environment-based configuration.
 
 ## ✨ Features
 
-* 🤖 Telegram bot powered by a local LM Studio model
+* 🤖 Local Telegram AI assistant powered by LM Studio
 * 🔌 OpenAI-compatible API connection
+* ⚡ Streaming text responses with live message editing
 * 🧠 Per-chat conversation memory
-* 🎭 Multiple assistant roles
-* ⌨️ Telegram reply keyboard for role selection
+* ✂️ Automatic history trimming to keep sessions manageable
+* 🎭 Multiple assistant roles with inline Telegram buttons
+* 🖼️ Image analysis support for vision-capable models
 * 🧹 Session reset command
-* ℹ️ About command with bot information
-* 💬 HTML-formatted Telegram responses
-* 🖼️ Optional image input support for vision-capable models
+* ℹ️ About command with project information
+* 🏷️ Welcome/About banner image support via `banner.jpg`
+* 💬 Markdown-to-Telegram-HTML formatting
+* 📊 Basic table rendering for Telegram messages
+* 🧪 Optional parser debug mode
+* 📝 Rotating log file support via `bot.log`
 * 🔐 Environment variables via `.env`
 
 ## 🧠 Available Roles
@@ -39,13 +44,14 @@ The bot includes several predefined assistant styles:
 * LM Studio installed and running
 * A local model loaded in LM Studio
 * LM Studio Local Server enabled
+* Optional: a vision-capable model for image analysis
 
 ## 🚀 Installation
 
 Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/lmstudio-ai-telegram-bot.git
+git clone https://github.com/neuromask/lmstudio-ai-telegram-bot.git
 cd lmstudio-ai-telegram-bot
 ```
 
@@ -81,12 +87,6 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-If you do not have `requirements.txt` yet, install dependencies manually:
-
-```bash
-pip install python-telegram-bot openai python-dotenv
-```
-
 ## ⚙️ Environment Variables
 
 Create a `.env` file in the project root:
@@ -96,7 +96,20 @@ TELEGRAM_TOKEN=your_telegram_bot_token_here
 LMSTUDIO_BASE_URL=http://localhost:1234/v1
 LMSTUDIO_API_KEY=lm-studio
 LMSTUDIO_MODEL=local-model
+LOG_LEVEL=INFO
+DEBUG_PARSER=False
 ```
+
+### Environment variable reference
+
+| Variable | Description | Default |
+|---|---|---|
+| `TELEGRAM_TOKEN` | Telegram bot token from BotFather | Required |
+| `LMSTUDIO_BASE_URL` | LM Studio OpenAI-compatible server URL | `http://localhost:1234/v1` |
+| `LMSTUDIO_API_KEY` | API key placeholder for LM Studio | `lm-studio` |
+| `LMSTUDIO_MODEL` | Model name passed to the API | `local-model` |
+| `LOG_LEVEL` | Logging level | `INFO` |
+| `DEBUG_PARSER` | Shows raw model output and parsed output separately | `False` |
 
 Do not upload `.env` to GitHub.
 
@@ -107,6 +120,8 @@ TELEGRAM_TOKEN=your_telegram_bot_token_here
 LMSTUDIO_BASE_URL=http://localhost:1234/v1
 LMSTUDIO_API_KEY=lm-studio
 LMSTUDIO_MODEL=local-model
+LOG_LEVEL=INFO
+DEBUG_PARSER=False
 ```
 
 ## 🔐 Git Ignore
@@ -115,6 +130,8 @@ Make sure your `.gitignore` contains:
 
 ```gitignore
 .env
+bot.log
+bot.log.*
 __pycache__/
 *.pyc
 .venv/
@@ -144,6 +161,8 @@ http://localhost:1234/v1
 LMSTUDIO_BASE_URL=http://localhost:1234/v1
 ```
 
+The bot uses LM Studio through the OpenAI-compatible endpoint, so it connects through the `openai` Python SDK while using your local LM Studio server.
+
 ## 🤖 How to Create a Telegram Bot
 
 1. Open Telegram.
@@ -165,7 +184,7 @@ LMSTUDIO_BASE_URL=http://localhost:1234/v1
 Example:
 
 ```text
-LM Studio AI Bot
+Nuforms AI
 ```
 
 6. Enter a username for your bot.
@@ -175,7 +194,7 @@ The username must end with `bot`.
 Example:
 
 ```text
-lmstudio_ai_helper_bot
+nuforms_ai_bot
 ```
 
 7. BotFather will give you a bot token.
@@ -210,26 +229,45 @@ Then run:
 python bot.py
 ```
 
-Or, if your main file has another name:
-
-```bash
-python your_file_name.py
-```
-
-If everything is configured correctly, you should see a message in the terminal that the bot has started.
+If everything is configured correctly, you should see startup logs in the terminal and in `bot.log`.
 
 ## 💬 Bot Commands
 
-| Command     | Description                                             |
-| ----------- | ------------------------------------------------------- |
-| `/start`    | Start the bot and initialize the default assistant role |
-| `/setstyle` | Open the role selection keyboard                        |
-| `/restart`  | Clear the current chat memory                           |
-| `/about`    | Show information about the bot                          |
+| Command | Description |
+|---|---|
+| `/start` | Start Nuforms AI and create a fresh session |
+| `/setstyle` | Choose the assistant role with inline buttons |
+| `/restart` | Clear the current chat memory while keeping the selected role |
+| `/about` | Show information about the bot and project |
+
+## 🖼️ Banner and Avatar
+
+The README uses:
+
+```text
+avatar.jpg
+```
+
+The bot welcome/about commands use:
+
+```text
+banner.jpg
+```
+
+Place both files in the project root:
+
+```text
+lmstudio-ai-telegram-bot/
+├── avatar.jpg
+├── banner.jpg
+└── bot.py
+```
+
+If `banner.jpg` is missing, the bot will still send the text message and log a warning.
 
 ## 🖼️ Image Support
 
-The bot can be extended to send Telegram images to LM Studio using Base64 image input.
+The bot can send Telegram images to LM Studio using Base64 image input.
 
 This requires:
 
@@ -246,7 +284,59 @@ Analyze this screenshot.
 Read the text from this image.
 ```
 
+To avoid bloating the conversation history, the bot replaces the heavy Base64 image content with a lightweight text placeholder after the vision response is received.
+
 Text-only models will not be able to analyze images.
+
+## ⚡ Streaming Responses
+
+Text replies are streamed from LM Studio and edited live in Telegram.
+
+The bot first sends a temporary message:
+
+```text
+🤖 Думаю...
+```
+
+Then it updates that message while the local model generates the response.
+
+## 🧪 Parser Debug Mode
+
+The bot includes optional parser debugging.
+
+Enable it in `.env`:
+
+```env
+DEBUG_PARSER=True
+```
+
+When enabled, the bot sends two debug messages:
+
+* raw Markdown output from the model
+* parsed Telegram HTML output
+
+For normal use, keep it disabled:
+
+```env
+DEBUG_PARSER=False
+```
+
+## 📝 Logging
+
+The bot writes logs to both the terminal and a rotating log file:
+
+```text
+bot.log
+```
+
+Log rotation is configured automatically, so old logs are kept as backups.
+
+Recommended `.gitignore` entries:
+
+```gitignore
+bot.log
+bot.log.*
+```
 
 ## 🛠️ Project Structure
 
@@ -255,6 +345,8 @@ Example structure:
 ```text
 lmstudio-ai-telegram-bot/
 ├── bot.py
+├── avatar.jpg
+├── banner.jpg
 ├── .env
 ├── .env.example
 ├── .gitignore
@@ -262,12 +354,15 @@ lmstudio-ai-telegram-bot/
 └── requirements.txt
 ```
 
-## 📄 Example requirements.txt
+## 📄 requirements.txt
 
 ```txt
 python-telegram-bot
 openai
 python-dotenv
+httpx
+Markdown
+beautifulsoup4
 ```
 
 ## ⚠️ Security Notes
@@ -277,14 +372,15 @@ python-dotenv
 * Revoke leaked tokens immediately through BotFather
 * Keep private local configuration outside GitHub
 * Use `.env.example` only as a public template
+* Do not commit `bot.log`, because logs may contain local debugging information
 
 ## 📌 Notes
 
-This project is designed for local AI usage with LM Studio.
+This project is designed for private local AI usage with LM Studio.
 
 The Telegram bot sends user messages to a locally running model through LM Studio's OpenAI-compatible API.
 
-It is useful for experimenting with private local AI assistants, role-based chatbots, and Telegram integrations.
+It is useful for experimenting with personal local AI assistants, role-based chatbots, streaming responses, image analysis, and Telegram integrations.
 
 ## 📜 License
 
